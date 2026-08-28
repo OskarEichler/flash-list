@@ -282,7 +282,8 @@ export class RecyclerViewManager<T> {
 
   computeItemViewability() {
     // Using higher buffer for masonry to avoid missing items
-    this.itemViewabilityManager.shouldListenToVisibleIndices &&
+    this.hasLayout() &&
+      this.itemViewabilityManager.shouldListenToVisibleIndices &&
       this.itemViewabilityManager.updateViewableItems(
         this.propsRef.masonry
           ? this.engagedIndicesTracker.getEngagedIndices().toArray()
@@ -441,8 +442,11 @@ export class RecyclerViewManager<T> {
 
   private getItemType(index: number): string {
     return (
-      this.propsRef.getItemType?.(this.propsRef.data![index], index) ??
-      "default"
+      this.propsRef.getItemType?.(
+        this.propsRef.data![index],
+        index,
+        this.propsRef.extraData
+      ) ?? "default"
     ).toString();
   }
 

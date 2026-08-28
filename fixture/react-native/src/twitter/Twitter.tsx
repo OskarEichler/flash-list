@@ -1,4 +1,4 @@
-import React, { useContext, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { FlashList, FlashListRef } from "@shopify/flash-list";
 
-import { DebugContext } from "../Debug";
+import { DebugContext } from "../Debug/DebugContext";
 
 import TweetCell from "./TweetCell";
 import { tweets as tweetsData } from "./data/tweets";
@@ -17,19 +17,27 @@ import Tweet from "./models/Tweet";
 export interface TwitterProps {
   instance?: React.RefObject<FlashListRef<Tweet>>;
   CellRendererComponent?: React.ComponentType<any>;
-  disableAutoLayout?: boolean;
 }
 
-const Twitter = ({
-  instance,
-  CellRendererComponent,
-  disableAutoLayout,
-}: TwitterProps) => {
+const Twitter = ({ instance, CellRendererComponent }: TwitterProps) => {
   const debugContext = useContext(DebugContext);
   const [refreshing, setRefreshing] = useState(false);
-  const remainingTweets = useRef([...tweetsData].splice(10, tweetsData.length));
-  const [tweets, setTweets] = useState(
-    debugContext.pagingEnabled ? [...tweetsData].splice(0, 10) : tweetsData
+  const nextTweetIndex = useRef(
+    debugContext.pagingEnabled ? 10 : tweetsData.length
+  );
+  const refreshTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pageTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [tweets, setTweets] = useState(() =>
+    debugContext.pagingEnabled ? tweetsData.slice(0, 10) : tweetsData
+  );
+  useEffect(
+    () => () => {
+      if (refreshTimeout.current !== null) clearTimeout(refreshTimeout.current);
+      if (pageTimeout.current !== null) clearTimeout(pageTimeout.current);
+      refreshTimeout.current = null;
+      pageTimeout.current = null;
+    },
+    []
   );
   const viewabilityConfig = useRef<ViewabilityConfig>({
     waitForInteraction: false,
@@ -38,7 +46,6 @@ const Twitter = ({
   }).current;
 
   return (
-    // @ts-ignore - Type compatibility issue between different React versions
     <FlashList
       ref={instance}
       testID="FlashList"
@@ -50,22 +57,31 @@ const Twitter = ({
       }}
       refreshing={refreshing}
       onRefresh={() => {
+        if (refreshTimeout.current !== null) return;
         setRefreshing(true);
-        setTimeout(() => {
+        refreshTimeout.current = setTimeout(() => {
+          refreshTimeout.current = null;
           setRefreshing(false);
-          const reversedTweets = [...tweets];
-          reversedTweets.reverse();
-          setTweets(reversedTweets);
+          setTweets((previous) => [...previous].reverse());
         }, 500);
       }}
-      // @ts-ignore - Type compatibility issue between different React versions
       CellRendererComponent={CellRendererComponent}
       onEndReached={() => {
-        if (!debugContext.pagingEnabled) {
+        if (
+          !debugContext.pagingEnabled ||
+          pageTimeout.current !== null ||
+          nextTweetIndex.current >= tweetsData.length
+        ) {
           return;
         }
-        setTimeout(() => {
-          setTweets([...tweets, ...remainingTweets.current.splice(0, 10)]);
+        pageTimeout.current = setTimeout(() => {
+          pageTimeout.current = null;
+          const page = tweetsData.slice(
+            nextTweetIndex.current,
+            nextTweetIndex.current + 10
+          );
+          nextTweetIndex.current += page.length;
+          setTweets((previous) => [...previous, ...page]);
         }, 1000);
       }}
       ListHeaderComponent={Header}
@@ -77,7 +93,6 @@ const Twitter = ({
         />
       }
       ListEmptyComponent={Empty()}
-      estimatedItemSize={150}
       ItemSeparatorComponent={Divider}
       data={debugContext.emptyListEnabled ? [] : tweets}
       initialScrollIndex={debugContext.initialScrollIndex}
@@ -85,7 +100,6 @@ const Twitter = ({
       onViewableItemsChanged={(info) => {
         console.log(info);
       }}
-      disableAutoLayout={disableAutoLayout}
     />
   );
 };
